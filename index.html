@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#123f70" />
+  <meta name="description" content="ClassPing classroom attendance recorder and official attendance sheet PDF generator." />
+  <title>ClassPing Attendance</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <main id="login-screen" class="login-shell">
+    <section class="login-card">
+      <div class="brand-lockup"><div class="brand-mark">CP</div><div><div class="brand-name">classping<span>.</span></div><div class="brand-subtitle">ATTENDANCE</div></div></div>
+      <p class="eyebrow">GRADE 9 · NEON</p>
+      <h1>Class attendance,<br>without the paperwork.</h1>
+      <p class="muted">Sign in to record attendance or view the class record.</p>
+      <form id="login-form" class="stack">
+        <label class="field-label" for="login-role">I am signing in as</label>
+        <select id="login-role" class="control">
+          <option value="monitor">Class monitor</option>
+          <option value="viewer">Classmate (view only)</option>
+        </select>
+        <label class="field-label" for="login-password">Password</label>
+        <input id="login-password" class="control" type="password" autocomplete="current-password" placeholder="Enter class access password" required />
+        <button class="button button-primary button-full" type="submit">Sign in <span aria-hidden="true">→</span></button>
+        <p id="login-error" class="error-text" hidden></p>
+      </form>
+      <p class="login-footnote">Private class workspace · Authorized access only</p>
+    </section>
+    <div class="login-side-note">A faster way to complete the official attendance sheet.</div>
+  </main>
+
+  <div id="app-shell" class="app-shell" hidden>
+    <header class="topbar">
+      <a class="brand-lockup compact" href="#home" aria-label="ClassPing home">
+        <div class="brand-mark">CP</div><div><div class="brand-name">classping<span>.</span></div><div class="brand-subtitle">ATTENDANCE</div></div>
+      </a>
+      <div class="topbar-right">
+        <span id="role-pill" class="role-pill">Class monitor</span>
+        <button id="logout-button" class="icon-button" title="Sign out" aria-label="Sign out">↗</button>
+      </div>
+    </header>
+
+    <div class="app-layout">
+      <aside class="sidebar">
+        <div class="sidebar-class"><span class="sidebar-kicker">YOUR CLASS</span><strong id="sidebar-section">Grade 9 - NEON</strong><span id="sidebar-students" class="muted small">30 students</span></div>
+        <nav class="side-nav" aria-label="Main navigation">
+          <button class="nav-item active" data-view="home"><span>⌂</span> Overview</button>
+          <button class="nav-item" data-view="attendance"><span>✓</span> Take attendance</button>
+          <button class="nav-item" data-view="records"><span>▤</span> Attendance records</button>
+          <button class="nav-item" data-view="downloads"><span>↓</span> PDF downloads</button>
+          <button class="nav-item monitor-only" data-view="settings"><span>⚙</span> Class setup</button>
+        </nav>
+        <div class="sidebar-bottom"><div class="status-dot"></div><span>Class workspace connected</span></div>
+      </aside>
+
+      <section class="main-panel">
+        <section id="view-home" class="view active-view">
+          <div class="page-heading">
+            <div><p class="eyebrow">CLASS WORKSPACE</p><h1>Attendance overview</h1><p class="muted">A clear record of every subject, every school day.</p></div>
+            <button id="home-take-attendance" class="button button-primary monitor-only">+ Take attendance</button>
+          </div>
+          <div class="stat-grid">
+            <article class="stat-card"><div class="stat-label">STUDENTS</div><div id="stat-students" class="stat-number">30</div><div class="stat-note">In the class roster</div></article>
+            <article class="stat-card"><div class="stat-label">FINALIZED DAYS</div><div id="stat-finalized" class="stat-number">0</div><div class="stat-note">Completed attendance records</div></article>
+            <article class="stat-card"><div class="stat-label">DRAFT DAYS</div><div id="stat-drafts" class="stat-number">0</div><div class="stat-note">Still being completed</div></article>
+          </div>
+          <div class="content-grid">
+            <article class="panel-card">
+              <div class="panel-heading"><div><h2>Recent attendance</h2><p class="muted">Latest saved class records</p></div><button class="text-button" data-go="records">View all →</button></div>
+              <div id="recent-records" class="record-list"><div class="empty-state">No attendance has been recorded yet.</div></div>
+            </article>
+            <article class="panel-card schedule-card">
+              <div class="panel-heading"><div><h2>Weekday subjects</h2><p class="muted">Loaded automatically by date</p></div></div>
+              <div id="weekday-preview" class="weekday-preview"></div>
+            </article>
+          </div>
+          <div class="info-banner"><div class="info-icon">i</div><div><strong>Official format preserved</strong><p>Your exports use the original student-name rows, date groups, subject columns, and class-monitor signature line.</p></div></div>
+        </section>
+
+        <section id="view-attendance" class="view">
+          <div class="page-heading"><div><p class="eyebrow">RECORD ATTENDANCE</p><h1>Daily attendance</h1><p class="muted">Choose a date, mark each scheduled subject, then finalize.</p></div><span id="autosave-indicator" class="save-indicator">● Ready</span></div>
+          <div id="stepper" class="stepper"><div class="step active" data-step="1"><span>1</span><b>Date</b></div><i></i><div class="step" data-step="2"><span>2</span><b>Subjects</b></div><i></i><div class="step" data-step="3"><span>3</span><b>Review</b></div></div>
+          <div class="panel-card attendance-panel">
+            <div class="date-row"><div><label class="field-label" for="attendance-date">Attendance date</label><input id="attendance-date" class="control date-control" type="date" /></div><div id="selected-day-label" class="day-label">Monday</div></div>
+            <div id="attendance-subjects-wrap">
+              <div class="section-subheading"><div><h2>Today's subjects</h2><p class="muted">Select a subject to mark its attendance.</p></div><span id="subject-progress" class="progress-count">0 / 0 completed</span></div>
+              <div id="subject-list" class="subject-list"></div>
+            </div>
+            <div id="marking-wrap" hidden>
+              <div class="marking-heading"><button id="back-to-subjects" class="back-button">← Subjects</button><div><p class="eyebrow">CURRENT SUBJECT</p><h2 id="current-subject-title">Mathematics</h2></div><span id="subject-marking-progress" class="progress-count">0 / 30 marked</span></div>
+              <div class="bulk-row"><div><strong>Mark the whole class present</strong><p class="muted">You can change individual students after.</p></div><button id="everyone-present" class="button button-success">✓ Everyone present</button></div>
+              <div id="student-mark-list" class="student-mark-list"></div>
+              <div class="marking-footer"><button id="save-next-subject" class="button button-primary button-full">Save & next subject →</button></div>
+            </div>
+            <div id="review-wrap" hidden>
+              <div class="section-subheading"><div><h2>Review this day</h2><p class="muted">Check that every subject has a mark for every student.</p></div><span id="day-state-badge" class="state-badge draft">Draft</span></div>
+              <div id="review-summary"></div>
+              <div class="action-row"><button id="back-to-subjects-review" class="button button-secondary">Back to subjects</button><button id="finalize-day" class="button button-primary">Finalize attendance</button></div>
+              <p id="finalize-note" class="muted small">Finalized records become read-only. The class monitor can reopen them if a correction is needed.</p>
+            </div>
+            <div id="day-finalized-wrap" hidden class="finalized-message"><div class="success-mark">✓</div><h2>Attendance finalized</h2><p class="muted">This day's record is locked. You can download its PDF or reopen it to correct an entry.</p><div class="action-row"><button id="download-final-day" class="button button-primary">Download daily PDF</button><button id="reopen-day" class="button button-secondary monitor-only">Reopen record</button></div></div>
+          </div>
+        </section>
+
+        <section id="view-records" class="view">
+          <div class="page-heading"><div><p class="eyebrow">CLASS HISTORY</p><h1>Attendance records</h1><p class="muted">Browse saved records by date and status.</p></div></div>
+          <div class="panel-card"><div class="filters-row"><label class="field-label" for="records-month">Filter month</label><input id="records-month" class="control month-control" type="month" /></div><div id="all-records" class="record-list"><div class="empty-state">No saved records yet.</div></div></div>
+        </section>
+
+        <section id="view-downloads" class="view">
+          <div class="page-heading"><div><p class="eyebrow">OFFICIAL DOCUMENTS</p><h1>PDF downloads</h1><p class="muted">Generate the original attendance-sheet layout, ready to print.</p></div></div>
+          <div class="export-grid">
+            <article class="export-card"><div class="export-icon red">PDF</div><h2>Daily attendance</h2><p class="muted">One selected school date, with that day's subject columns.</p><label class="field-label" for="export-daily-date">Select date</label><input id="export-daily-date" class="control" type="date" /><button id="export-daily" class="button button-primary button-full">Download daily PDF ↓</button></article>
+            <article class="export-card"><div class="export-icon red">PDF</div><h2>Weekly attendance</h2><p class="muted">Monday to Friday grouped into one official-format page.</p><label class="field-label" for="export-week-date">Choose any date in the week</label><input id="export-week-date" class="control" type="date" /><button id="export-weekly" class="button button-primary button-full">Download weekly PDF ↓</button></article>
+            <article class="export-card"><div class="export-icon red">PDF</div><h2>Monthly attendance</h2><p class="muted">A multi-page PDF with one official-format page per school week.</p><label class="field-label" for="export-month">Select month</label><input id="export-month" class="control" type="month" /><button id="export-monthly" class="button button-primary button-full">Download monthly PDF ↓</button></article>
+            <article class="export-card monitor-only"><div class="export-icon">JSON</div><h2>Full data backup</h2><p class="muted">Download the roster, class setup, attendance history, and audit log. Keep this file somewhere private.</p><button id="download-backup" class="button button-secondary button-full">Download backup ↓</button></article>
+          </div>
+          <div class="info-banner"><div class="info-icon">!</div><div><strong>Submission check</strong><p>Pages with unfinished attendance are labeled DRAFT - FOR REVIEW. Finalize records before submitting them as official copies.</p></div></div>
+        </section>
+
+        <section id="view-settings" class="view">
+          <div class="page-heading"><div><p class="eyebrow">MONITOR CONTROLS</p><h1>Class setup</h1><p class="muted">Correct the roster, official headings, and weekday subject lists.</p></div></div>
+          <form id="setup-form" class="setup-layout">
+            <article class="panel-card"><div class="panel-heading"><div><h2>Official sheet information</h2><p class="muted">Printed in the PDF header and footer.</p></div></div><div class="form-grid">
+              <div class="form-field"><label class="field-label" for="setup-school">School name</label><input id="setup-school" class="control" /></div>
+              <div class="form-field"><label class="field-label" for="setup-address">School address</label><input id="setup-address" class="control" /></div>
+              <div class="form-field"><label class="field-label" for="setup-section">Grade and section</label><input id="setup-section" class="control" /></div>
+              <div class="form-field"><label class="field-label" for="setup-adviser">Adviser</label><input id="setup-adviser" class="control" /></div>
+              <div class="form-field"><label class="field-label" for="setup-monitor">Class monitor</label><input id="setup-monitor" class="control" /></div>
+            </div></article>
+            <article class="panel-card"><div class="panel-heading"><div><h2>Student roster</h2><p class="muted">One student per line. Use BOYS or GIRLS, then a vertical bar, then the name.</p></div><span id="roster-count" class="progress-count">30 students</span></div><textarea id="setup-roster" class="control roster-textarea" spellcheck="false"></textarea><p class="muted small">Example: BOYS | SURNAME, First Name M. · Names are prefilled from your photo; verify the spelling before official use.</p></article>
+            <article class="panel-card"><div class="panel-heading"><div><h2>Subjects by weekday</h2><p class="muted">Comma-separated. These become the columns under each date.</p></div></div><div id="weekday-editors" class="weekday-editors"></div></article>
+            <article class="panel-card"><div class="panel-heading"><div><h2>Attendance symbols</h2><p class="muted">The symbols printed in the official sheet.</p></div></div><div class="symbol-grid"><div><label class="field-label" for="mark-present">Present</label><input id="mark-present" class="control" maxlength="3" /></div><div><label class="field-label" for="mark-absent">Absent</label><input id="mark-absent" class="control" maxlength="3" /></div><div><label class="field-label" for="mark-late">Late</label><input id="mark-late" class="control" maxlength="3" /></div><div><label class="field-label" for="mark-excused">Excused</label><input id="mark-excused" class="control" maxlength="3" /></div></div></article>
+            <div class="save-setup-row"><span class="muted small">Changes affect new records and future exports. Existing attendance marks are retained.</span><button class="button button-primary" type="submit">Save class setup</button></div>
+          </form>
+        </section>
+      </section>
+    </div>
+
+    <nav class="mobile-nav" aria-label="Mobile navigation">
+      <button class="mobile-nav-item active" data-view="home"><span>⌂</span><small>Home</small></button>
+      <button class="mobile-nav-item monitor-only" data-view="attendance"><span>✓</span><small>Attend</small></button>
+      <button class="mobile-nav-item" data-view="records"><span>▤</span><small>Records</small></button>
+      <button class="mobile-nav-item" data-view="downloads"><span>↓</span><small>PDFs</small></button>
+      <button class="mobile-nav-item monitor-only" data-view="settings"><span>⚙</span><small>Setup</small></button>
+    </nav>
+  </div>
+  <script src="/app.js" defer></script>
+</body>
+</html>
