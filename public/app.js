@@ -6,6 +6,7 @@ const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 const STATUS = { P: 'Present', A: 'Absent', L: 'Late', E: 'Excused' };
 let appData = null;
 let role = null;
+let authFlowVersion = 0;
 let selectedDate = localDate();
 let dayData = null;
 let workingSubjects = {};
@@ -42,8 +43,17 @@ async function api(url, options = {}) {
   return response.json();
 }
 function setLoginVisible(visible) {
-  $('#login-screen').hidden = !visible;
-  $('#app-shell').hidden = visible;
+  const loginScreen = $('#login-screen');
+  const appShell = $('#app-shell');
+
+  // Set both the hidden attribute and inline display. The inline fallback
+  // prevents an old cached stylesheet from keeping the login screen visible.
+  loginScreen.hidden = !visible;
+  appShell.hidden = visible;
+  loginScreen.style.display = visible ? 'grid' : 'none';
+  appShell.style.display = visible ? 'none' : 'block';
+  loginScreen.setAttribute('aria-hidden', String(!visible));
+  appShell.setAttribute('aria-hidden', String(visible));
 }
 function showView(name) {
   $$('.view').forEach(el => el.classList.toggle('active-view', el.id === `view-${name}`));
@@ -56,16 +66,20 @@ function applyRole() {
   $$('.monitor-only').forEach(el => el.hidden = role !== 'monitor');
 }
 async function startApp() {
+  const flowVersionAtStart = authFlowVersion;
   try {
     const me = await api('/api/me');
+    // Do not let a late startup check undo a login the user just completed.
+    if (flowVersionAtStart !== authFlowVersion) return;
     if (!me.authenticated) return setLoginVisible(true);
     role = me.role;
     appData = await api('/api/bootstrap');
+    if (flowVersionAtStart !== authFlowVersion) return;
     setLoginVisible(false);
     applyRole();
     renderAll();
   } catch {
-    setLoginVisible(true);
+    if (flowVersionAtStart === authFlowVersion) setLoginVisible(true);
   }
 }
 function renderAll() {
@@ -358,18 +372,42 @@ async function downloadPdf(type, params) {
 $('#login-form').addEventListener('submit', async event => {
   event.preventDefault();
   const error = $('#login-error');
+  const submitButton = $('#login-form button[type=submit]');
+  const originalButtonText = submitButton.innerHTML;
+  const thisLoginAttempt = ++authFlowVersion;
   error.hidden = true;
+  submitButton.disabled = true;
+  submitButton.textContent = 'Signing in…';
   try {
     const result = await api('/api/login', { method: 'POST', body: JSON.stringify({ role: $('#login-role').value, password: $('#login-password').value }) });
+    if (!result?.ok || !['monitor', 'viewer'].includes(result.role)) {
+      throw new Error('The server returned an incomplete sign-in response. Please try again.');
+    }
     role = result.role;
     appData = await api('/api/bootstrap');
-    setLoginVisible(false);
+    if (thisLoginAttempt !== authFlowVersion) return;
+    if (!appData || !appData.classInfo || !Array.isArray(appData.roster) || !Array.isArray(appData.records) || !appData.subjectsByDay) {
+      throw new Error('Class data could not be loaded completely. Please refresh and try again.');
+    }
     applyRole();
     renderAll();
+    setLoginVisible(false);
     $('#login-password').value = '';
-  } catch (err) { error.textContent = err.message; error.hidden = false; }
+  } catch (err) {
+    if (thisLoginAttempt === authFlowVersion) {
+      role = null;
+      appData = null;
+      setLoginVisible(true);
+      error.textContent = err.message || 'Sign-in failed. Please try again.';
+      error.hidden = false;
+    }
+  } finally {
+    submitButton.disabled = false;
+    submitButton.innerHTML = originalButtonText;
+  }
 });
 $('#logout-button').addEventListener('click', async () => {
+  ++authFlowVersion;
   try { await api('/api/logout', { method: 'POST', body: '{}' }); } catch {}
   role = null; appData = null; setLoginVisible(true); showToast('Signed out.');
 });
