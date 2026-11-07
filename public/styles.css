@@ -3,3 +3,6 @@
 @media(max-width:390px){.main-panel{padding-left:14px;padding-right:14px}.page-heading{align-items:flex-start;flex-direction:column}.stat-grid{gap:7px}.stat-card{padding:12px}.stat-number{font-size:23px}.stat-note{font-size:9px}.role-pill{display:none}.student-name{font-size:10px}.mark-option{min-width:26px;width:26px;height:29px}.symbol-grid{gap:6px}}
 .group-divider{padding:10px 0 6px;font:700 11px Manrope,sans-serif;color:#315d80;border-bottom:1px solid #dfe7ee;margin-top:5px}.group-divider:first-child{margin-top:0}
 .record-action{display:flex;align-items:center;gap:6px}
+[hidden] {
+  display: none !important;
+}
