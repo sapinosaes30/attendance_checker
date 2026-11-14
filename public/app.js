@@ -10,15 +10,13 @@ let authFlowVersion = 0;
 let selectedDate = localDate();
 let dayData = null;
 let workingSubjects = {};
+let workingNoClassSubjects = {};
 let currentSubject = null;
 let showReview = false;
 let saveTimer = null;
 let isSaving = false;
 let saveQueue = Promise.resolve();
 let toastTimer = null;
-let sheetData = null;
-let historyOffset = 0;
-let historyTotal = 0;
 
 function localDate(date = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date);
@@ -42,14 +40,7 @@ async function api(url, options = {}) {
     const payload = type.includes('application/json') ? await response.json().catch(() => ({})) : {};
     throw new Error(payload.error || `Request failed (${response.status}).`);
   }
-  const disposition = response.headers.get('content-disposition') || '';
-  if (type.includes('application/pdf') || type.includes('spreadsheetml') || type.includes('text/csv') || disposition.toLowerCase().includes('attachment')) {
-    let filename = '';
-    const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
-    const plainMatch = disposition.match(/filename="?([^";]+)"?/i);
-    try { filename = decodeURIComponent(utf8Match?.[1] || plainMatch?.[1] || ''); } catch { filename = plainMatch?.[1] || ''; }
-    return { blob: await response.blob(), filename };
-  }
+  if (type.includes('application/pdf')) return response.blob();
   return response.json();
 }
 function setLoginVisible(visible) {
@@ -66,18 +57,13 @@ function setLoginVisible(visible) {
   appShell.setAttribute('aria-hidden', String(visible));
 }
 function showView(name) {
-  const administratorViews = ['home', 'attendance', 'sheet', 'records', 'downloads', 'settings'];
-  const allowedViews = role === 'viewer' ? ['sheet', 'downloads'] : administratorViews;
-  if (!allowedViews.includes(name)) name = role === 'viewer' ? 'sheet' : 'home';
   $$('.view').forEach(el => el.classList.toggle('active-view', el.id === `view-${name}`));
   $$('[data-view]').forEach(el => el.classList.toggle('active', el.dataset.view === name));
   if (name === 'records') renderRecords();
   if (name === 'settings') renderSetup();
-  if (name === 'sheet') loadSheet().catch(err => showToast(err.message));
-  if (name === 'downloads' && role === 'monitor') loadDownloadHistory(false).catch(err => showToast(err.message));
 }
 function applyRole() {
-  $('#role-pill').textContent = role === 'monitor' ? 'Administrator' : 'Viewer';
+  $('#role-pill').textContent = role === 'monitor' ? 'Class monitor' : 'View only';
   $$('.monitor-only').forEach(el => el.hidden = role !== 'monitor');
 }
 async function startApp() {
@@ -93,7 +79,6 @@ async function startApp() {
     setLoginVisible(false);
     applyRole();
     renderAll();
-    showView(role === 'viewer' ? 'sheet' : 'home');
   } catch {
     if (flowVersionAtStart === authFlowVersion) setLoginVisible(true);
   }
@@ -105,10 +90,8 @@ function renderAll() {
   const finalized = appData.records.filter(r => r.state === 'finalized').length;
   $('#stat-finalized').textContent = finalized;
   $('#stat-drafts').textContent = appData.records.length - finalized;
-  if (role === 'monitor') {
-    renderRecentRecords();
-    renderWeekdayPreview();
-  }
+  renderRecentRecords();
+  renderWeekdayPreview();
   $('#attendance-date').value = selectedDate;
   $('#export-daily-date').value = selectedDate;
   $('#export-week-date').value = selectedDate;
@@ -117,11 +100,8 @@ function renderAll() {
 }
 function renderRecentRecords() {
   const list = appData.records.slice(0, 5);
-  $('#recent-records').innerHTML = list.length ? list.map(record => {
-    const state = record.state === 'finalized' ? 'finalized' : 'draft';
-    const label = state === 'finalized' ? 'Finalized' : 'Draft';
-    return `<div class="record-item"><div><div class="record-date">${escapeHtml(formatDate(record.date))}</div><div class="record-meta">${Number(record.subjectCount || 0)} subject columns · Updated ${escapeHtml(formatTime(record.updatedAt))}</div></div><div class="record-action"><span class="state-badge ${state}">${label}</span> <button class="text-button" data-open-date="${escapeHtml(record.date)}">Open</button></div></div>`;
-  }).join('') : '<div class="empty-state">No attendance has been recorded yet.</div>';
+  $('#recent-records').innerHTML = list.length ? list.map(record => `
+    <div class="record-item"><div><div class="record-date">${escapeHtml(formatDate(record.date))}</div><div class="record-meta">${record.subjectCount} subject columns · Updated ${escapeHtml(formatTime(record.updatedAt))}</div></div><div class="record-action"><span class="state-badge ${record.state}">${record.state === 'finalized' ? 'Finalized' : 'Draft'}</span> <button class="text-button" data-open-date="${record.date}">Open</button></div></div>`).join('') : '<div class="empty-state">No attendance has been recorded yet.</div>';
   $$('[data-open-date]').forEach(button => button.addEventListener('click', () => openDate(button.dataset.openDate)));
 }
 function renderWeekdayPreview() {
@@ -145,13 +125,18 @@ async function openDate(date) {
     dayData = await api(`/api/attendance/${date}`);
     workingSubjects = {};
     for (const subject of dayData.subjects) workingSubjects[subject] = { ...(dayData.record?.subjects?.[subject] || {}) };
+    workingNoClassSubjects = { ...(dayData.record?.noClassSubjects || {}) };
     currentSubject = null;
     showReview = false;
     renderAttendanceScreen();
   } catch (err) { showToast(err.message); }
 }
 function currentRecordFinalized() { return dayData?.record?.state === 'finalized'; }
+function isNoClass(subject) {
+  return workingNoClassSubjects?.[subject] === true;
+}
 function completeCount(subject) {
+  if (isNoClass(subject)) return appData.roster.length;
   const marks = workingSubjects[subject] || {};
   return appData.roster.filter(student => STATUS[marks[student.id]]).length;
 }
@@ -179,8 +164,10 @@ function renderSubjectList() {
   $('#subject-list').innerHTML = subjects.length ? subjects.map(subject => {
     const count = completeCount(subject);
     const full = count === appData.roster.length;
-    return `<button class="subject-card ${full ? 'subject-marked' : ''}" data-subject="${escapeHtml(subject)}"><span><strong>${escapeHtml(subject)}</strong><small>${count} / ${appData.roster.length} students marked</small></span><span class="subject-arrow">${full ? '✓' : '›'}</span></button>`;
-  }).join('') + (role === 'monitor' ? '<button id="go-review" class="button button-primary button-full" style="grid-column:1/-1;margin-top:6px">Review & finalize day →</button>' : '') : '<div class="empty-state">No subjects are configured for this weekday. Ask an administrator to update the class setup.</div>';
+    const noClass = isNoClass(subject);
+    const detail = noClass ? 'No class during this period' : `${count} / ${appData.roster.length} students marked`;
+    return `<button class="subject-card ${full ? 'subject-marked' : ''}" data-subject="${escapeHtml(subject)}"><span><strong>${escapeHtml(subject)}</strong><small>${detail}</small></span><span class="subject-arrow">${noClass ? '—' : (full ? '✓' : '›')}</span></button>`;
+  }).join('') + (role === 'monitor' ? '<button id="go-review" class="button button-primary button-full" style="grid-column:1/-1;margin-top:6px">Review & finalize day →</button>' : '') : '<div class="empty-state">No subjects are configured for this weekday. Ask the class monitor to update the class setup.</div>';
   $$('[data-subject]').forEach(button => button.addEventListener('click', () => {
     currentSubject = button.dataset.subject;
     showReview = false;
@@ -191,17 +178,46 @@ function renderSubjectList() {
 function renderMarking() {
   $('#current-subject-title').textContent = currentSubject;
   const marks = workingSubjects[currentSubject] || {};
+  const noClass = isNoClass(currentSubject);
   const count = appData.roster.filter(student => STATUS[marks[student.id]]).length;
-  $('#subject-marking-progress').textContent = `${count} / ${appData.roster.length} marked`;
-  $('#everyone-present').disabled = role !== 'monitor' || currentRecordFinalized();
+  $('#subject-marking-progress').textContent = noClass ? 'No class during this period' : `${count} / ${appData.roster.length} marked`;
+  $('#everyone-present').disabled = role !== 'monitor' || currentRecordFinalized() || noClass;
+  $('#everyone-present').hidden = noClass;
+  $('#everyone-present').parentElement.hidden = noClass;
   $('#save-next-subject').disabled = role !== 'monitor';
   $('#save-next-subject').textContent = role === 'monitor' ? 'Save & next subject →' : 'View only';
-  $('#student-mark-list').innerHTML = ['Boys', 'Girls'].map(group => {
+
+  // Build this control dynamically so the existing index.html does not need a structural rewrite.
+  const studentList = $('#student-mark-list');
+  let statusPanel = $('#period-status-panel');
+  if (!statusPanel) {
+    statusPanel = document.createElement('div');
+    statusPanel.id = 'period-status-panel';
+    statusPanel.style.cssText = 'margin:0 0 14px;padding:12px 14px;border:1px solid #8d735b;border-radius:12px;background:rgba(141,115,91,.10);';
+    studentList.parentNode.insertBefore(statusPanel, studentList);
+  }
+  statusPanel.innerHTML = noClass
+    ? `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;justify-content:space-between"><div><strong style="display:block;letter-spacing:.04em">NO CLASS DURING THIS PERIOD</strong><small style="opacity:.8">This period is excluded from student attendance counts and finalization checks.</small></div>${role === 'monitor' ? '<button id="toggle-no-class" type="button" class="button" style="white-space:nowrap">Restore attendance marking</button>' : ''}</div>`
+    : `${role === 'monitor' ? '<button id="toggle-no-class" type="button" class="button" style="white-space:nowrap">No Class During Period</button>' : '<small>This period has not been marked as having no class.</small>'}`;
+  studentList.hidden = noClass;
+  $('#toggle-no-class')?.addEventListener('click', () => {
+    if (role !== 'monitor' || currentRecordFinalized()) return;
+    if (isNoClass(currentSubject)) delete workingNoClassSubjects[currentSubject];
+    else workingNoClassSubjects[currentSubject] = true;
+    renderMarking();
+    scheduleSave();
+  });
+
+  if (noClass) {
+    studentList.innerHTML = '';
+    return;
+  }
+  studentList.innerHTML = ['Boys', 'Girls'].map(group => {
     const groupStudents = appData.roster.filter(s => s.gender === group);
     if (!groupStudents.length) return '';
     return `<div class="group-divider">${group}</div>` + groupStudents.map(student => {
       const status = marks[student.id] || '';
-      return `<div class="student-mark-row"><div><div class="student-name">${escapeHtml(student.name)}</div><div class="student-group">${group}</div></div><div class="mark-options">${Object.entries(STATUS).map(([key, label]) => `<button class="mark-option ${status === key ? `selected` : ''}" data-mark="${key}" data-student="${escapeHtml(student.id)}" aria-label="${label}" title="${label}" ${role !== 'monitor' ? 'disabled' : ''}>${key}</button>`).join('')}</div></div>`;
+      return `<div class="student-mark-row"><div><div class="student-name">${escapeHtml(student.name)}</div><div class="student-group">${group}</div></div><div class="mark-options">${Object.entries(STATUS).map(([key, label]) => `<button class="mark-option ${status === key ? `selected` : ''}" data-mark="${key}" data-student="${student.id}" aria-label="${label}" title="${label}" ${role !== 'monitor' ? 'disabled' : ''}>${key}</button>`).join('')}</div></div>`;
     }).join('');
   }).join('');
   $$('[data-mark]').forEach(button => button.addEventListener('click', () => {
@@ -215,22 +231,25 @@ function renderMarking() {
 function renderReview() {
   if (!dayData) return;
   const subjects = dayData.subjects || [];
-  let total = 0, present = 0, absent = 0, late = 0, excused = 0, missing = 0;
+  let present = 0, absent = 0, late = 0, excused = 0, missing = 0, noClassCount = 0;
   const rows = subjects.map(subject => {
+    if (isNoClass(subject)) {
+      noClassCount++;
+      return `<div class="review-subject-row"><span>${escapeHtml(subject)}</span><span class="complete">No Class · Excluded from attendance</span></div>`;
+    }
     const marks = workingSubjects[subject] || {};
     let done = 0;
     for (const student of appData.roster) {
       const status = marks[student.id];
-      if (status) done++;
-      total++;
+      if (STATUS[status]) done++;
       if (status === 'P') present++; else if (status === 'A') absent++; else if (status === 'L') late++; else if (status === 'E') excused++; else missing++;
     }
     const full = done === appData.roster.length;
     return `<div class="review-subject-row"><span>${escapeHtml(subject)}</span><span class="${full ? 'complete' : 'incomplete'}">${done}/${appData.roster.length} ${full ? 'Complete' : 'Needs marks'}</span></div>`;
   }).join('');
-  $('#review-summary').innerHTML = `<div class="review-summary"><div class="review-stat"><b>${present}</b><span>Present marks</span></div><div class="review-stat"><b>${absent}</b><span>Absent marks</span></div><div class="review-stat"><b>${late}</b><span>Late marks</span></div><div class="review-stat"><b>${missing}</b><span>Unmarked cells</span></div></div>${rows || '<div class="empty-state">No subject columns for this date.</div>'}`;
+  $('#review-summary').innerHTML = `<div class="review-summary"><div class="review-stat"><b>${present}</b><span>Present marks</span></div><div class="review-stat"><b>${absent}</b><span>Absent marks</span></div><div class="review-stat"><b>${late}</b><span>Late marks</span></div><div class="review-stat"><b>${excused}</b><span>Excused marks</span></div><div class="review-stat"><b>${missing}</b><span>Unmarked cells</span></div><div class="review-stat"><b>${noClassCount}</b><span>No-class periods</span></div></div>${rows || '<div class="empty-state">No subject columns for this date.</div>'}`;
   $('#finalize-day').disabled = role !== 'monitor' || missing > 0 || subjects.length === 0;
-  $('#finalize-note').textContent = missing ? `${missing} cell(s) still need an attendance mark before finalization.` : 'All attendance cells are marked. Finalized records become read-only; an administrator can reopen them if a correction is needed.';
+  $('#finalize-note').textContent = missing ? `${missing} cell(s) still need an attendance mark before finalization.` : `${noClassCount ? `${noClassCount} no-class period(s) are excluded. ` : ''}All required attendance cells are complete. Finalized records become read-only; the monitor can reopen them if a correction is needed.`;
   updateStepper(3);
 }
 function updateStepper(active) {
@@ -251,7 +270,7 @@ function saveDraft() {
   if (role !== 'monitor' || !dayData || currentRecordFinalized()) return Promise.resolve();
   clearTimeout(saveTimer);
   const saveDate = selectedDate;
-  const payload = JSON.stringify({ subjects: workingSubjects });
+  const payload = JSON.stringify({ subjects: workingSubjects, noClassSubjects: workingNoClassSubjects });
   const task = saveQueue.catch(() => {}).then(async () => {
     isSaving = true;
     $('#autosave-indicator').textContent = '● Saving';
@@ -299,111 +318,16 @@ async function reopenDay() {
     showToast('Record reopened for corrections.');
   } catch (err) { showToast(err.message); }
 }
-function statusSymbol(code, info) {
-  if (code === 'P') return info.presentMark || '/';
-  if (code === 'A') return info.absentMark || 'A';
-  if (code === 'L') return info.lateMark || 'L';
-  if (code === 'E') return info.excusedMark || 'E';
-  return '';
-}
-function loadSheet() {
-  return api('/api/sheet').then(result => {
-    sheetData = result;
-    const months = [...new Set((result.records || []).map(record => record.date.slice(0, 7)))].sort().reverse();
-    const monthSelect = $('#sheet-month');
-    const current = monthSelect.value;
-    monthSelect.innerHTML = '<option value="">All history</option>' + months.map(month => {
-      const [year, number] = month.split('-').map(Number);
-      const label = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'Asia/Manila' }).format(new Date(Date.UTC(year, number - 1, 15)));
-      return `<option value="${escapeHtml(month)}">${escapeHtml(label)}</option>`;
-    }).join('');
-    if (months.includes(current)) monthSelect.value = current;
-    $('#sheet-title').textContent = result.classInfo?.gradeSection ? `${result.classInfo.gradeSection} attendance` : 'Attendance sheet';
-    const info = result.classInfo || {};
-    $('#sheet-legend').innerHTML = [
-      [info.presentMark || '/', 'Present'],
-      [info.absentMark || 'A', 'Absent'],
-      [info.lateMark || 'L', 'Late'],
-      [info.excusedMark || 'E', 'Excused'],
-      ['—', 'No saved mark']
-    ].map(([symbol, label]) => `<span><b>${escapeHtml(symbol)}</b> ${label}</span>`).join('');
-    renderSheet();
-  });
-}
-function renderSheet() {
-  if (!sheetData) return;
-  const selectedMonth = $('#sheet-month').value;
-  const records = (sheetData.records || []).filter(record => !selectedMonth || record.date.startsWith(selectedMonth)).sort((a, b) => a.date.localeCompare(b.date));
-  const columns = [];
-  for (const record of records) {
-    for (const subject of Object.keys(record.subjects || {})) columns.push({ date: record.date, subject, record });
-  }
-  const monthLabel = selectedMonth ? selectedMonth : 'all saved dates';
-  $('#sheet-count').textContent = `${records.length} saved day${records.length === 1 ? '' : 's'} · ${columns.length} subject columns · ${monthLabel}`;
-  if (!sheetData.roster?.length) {
-    $('#attendance-sheet').innerHTML = '<div class="empty-state">No students are configured.</div>';
-    return;
-  }
-  if (!columns.length) {
-    $('#attendance-sheet').innerHTML = '<div class="empty-state">No attendance has been saved for this period yet.</div>';
-    return;
-  }
-  const groups = [];
-  for (const column of columns) {
-    const last = groups[groups.length - 1];
-    if (last && last.date === column.date) last.columns.push(column);
-    else groups.push({ date: column.date, columns: [column] });
-  }
-  const firstHeader = `<tr><th class="student-sticky student-header" rowspan="2">Student</th>${groups.map(group => `<th class="date-group" colspan="${group.columns.length}">${escapeHtml(formatDate(group.date))}</th>`).join('')}</tr>`;
-  const secondHeader = `<tr>${columns.map(column => `<th class="subject-header" title="${escapeHtml(column.subject)}">${escapeHtml(column.subject)}</th>`).join('')}</tr>`;
-  const body = sheetData.roster.map(student => {
-    const marks = columns.map(column => {
-      const rawCode = column.record.subjects?.[column.subject]?.[student.id];
-      const code = ['P', 'A', 'L', 'E'].includes(rawCode) ? rawCode : '';
-      const symbol = statusSymbol(code, sheetData.classInfo || {});
-      const label = ({ P: 'Present', A: 'Absent', L: 'Late', E: 'Excused' })[code] || 'No mark';
-      return `<td class="mark-cell ${code ? `mark-${code.toLowerCase()}` : 'mark-empty'}" title="${label}">${symbol ? escapeHtml(symbol) : '—'}</td>`;
-    }).join('');
-    const studentLabel = student.isFormer ? 'Former student' : (student.gender || '');
-    return `<tr><th scope="row" class="student-sticky student-cell"><span>${escapeHtml(student.name)}</span><small>${escapeHtml(studentLabel)}</small></th>${marks}</tr>`;
-  }).join('');
-  $('#attendance-sheet').innerHTML = `<table class="attendance-matrix" aria-label="Unified attendance history"><thead>${firstHeader}${secondHeader}</thead><tbody>${body}</tbody></table>`;
-}
-async function loadDownloadHistory(append = false) {
-  if (role !== 'monitor') return;
-  if (!append) historyOffset = 0;
-  const result = await api(`/api/download-history?limit=50&offset=${historyOffset}`);
-  historyTotal = Number(result.total ?? 0);
-  const entries = result.entries || [];
-  const container = $('#download-history-list');
-  const html = entries.length ? entries.map(entry => {
-    const timestamp = entry.downloaded_at ? new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Manila' }).format(new Date(entry.downloaded_at)) : 'Unknown date';
-    const format = String(entry.format || '').toUpperCase();
-    const detail = entry.scope === 'all-history' ? 'Complete attendance history' : `${entry.scope || 'Attendance export'} sheet`;
-    return `<div class="history-row"><div><strong>${escapeHtml(entry.filename || `${format} export`)}</strong><small>${escapeHtml(detail)} · ${Number(entry.record_count || 0)} date(s)</small></div><div class="history-meta"><b>${escapeHtml(format)}</b><small>${escapeHtml(timestamp)}</small><small>${entry.role === 'monitor' ? 'Administrator' : 'Viewer'}</small></div></div>`;
-  }).join('') : '<div class="empty-state">No successful attendance downloads have been logged yet.</div>';
-  if (append) container.insertAdjacentHTML('beforeend', html);
-  else container.innerHTML = html;
-  historyOffset += entries.length;
-  $('#load-more-history').hidden = historyOffset >= historyTotal || entries.length === 0;
-}
 function renderRecords() {
-  if (!appData || role !== 'monitor') return;
+  if (!appData) return;
   const month = $('#records-month').value;
   const records = appData.records.filter(r => !month || r.date.startsWith(month));
-  $('#all-records').innerHTML = records.length ? records.map(record => {
-    const state = record.state === 'finalized' ? 'finalized' : 'draft';
-    const label = state === 'finalized' ? 'Finalized' : 'Draft';
-    return `<div class="record-item"><div><div class="record-date">${escapeHtml(formatDate(record.date))}</div><div class="record-meta">${Number(record.subjectCount || 0)} subject columns · Updated ${escapeHtml(formatTime(record.updatedAt))}</div></div><div><span class="state-badge ${state}">${label}</span> <button class="text-button" data-record-date="${escapeHtml(record.date)}">Open</button></div></div>`;
-  }).join('') : '<div class="empty-state">No saved records for this month.</div>';
+  $('#all-records').innerHTML = records.length ? records.map(record => `<div class="record-item"><div><div class="record-date">${escapeHtml(formatDate(record.date))}</div><div class="record-meta">${record.subjectCount} subject columns · Updated ${escapeHtml(formatTime(record.updatedAt))}</div></div><div><span class="state-badge ${record.state}">${record.state === 'finalized' ? 'Finalized' : 'Draft'}</span> <button class="text-button" data-record-date="${record.date}">Open</button></div></div>`).join('') : '<div class="empty-state">No saved records for this month.</div>';
   $$('[data-record-date]').forEach(button => button.addEventListener('click', () => openDate(button.dataset.recordDate)));
 }
 function rosterToText(roster) { return roster.map(student => `${student.gender.toUpperCase()} | ${student.name}`).join('\n'); }
 function parseRoster(text) {
-  const existing = new Map([
-    ...(appData?.formerRoster || []).map(s => [s.name.trim().toLowerCase(), s.id]),
-    ...(appData?.roster || []).map(s => [s.name.trim().toLowerCase(), s.id])
-  ]);
+  const existing = new Map((appData?.roster || []).map(s => [s.name.trim().toLowerCase(), s.id]));
   return text.split('\n').map(line => line.trim()).filter(Boolean).map((line, i) => {
     const split = line.indexOf('|');
     const genderText = split >= 0 ? line.slice(0, split).trim().toLowerCase() : 'boys';
@@ -422,7 +346,7 @@ function renderSetup() {
   $('#setup-monitor').value = info.classMonitor || '';
   $('#setup-roster').value = rosterToText(appData.roster);
   $('#roster-count').textContent = `${appData.roster.length} students`;
-  $('#weekday-editors').innerHTML = DAYS.map(day => `<div class="weekday-editor"><label for="subjects-${day}">${day}</label><textarea id="subjects-${day}" class="control" data-day-subjects="${day}">${(appData.subjectsByDay[day] || []).map(escapeHtml).join(', ')}</textarea></div>`).join('');
+  $('#weekday-editors').innerHTML = DAYS.map(day => `<div class="weekday-editor"><label for="subjects-${day}">${day}</label><textarea id="subjects-${day}" class="control" data-day-subjects="${day}">${(appData.subjectsByDay[day] || []).join(', ')}</textarea></div>`).join('');
   $('#mark-present').value = info.presentMark || '/';
   $('#mark-absent').value = info.absentMark || 'A';
   $('#mark-late').value = info.lateMark || 'L';
@@ -469,31 +393,19 @@ async function downloadBackup() {
   } catch (err) { showToast(err.message); }
 }
 
-function saveBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1500);
-}
 async function downloadPdf(type, params) {
   try {
     const query = new URLSearchParams({ type, ...params });
-    const file = await api(`/api/export?${query.toString()}`);
-    saveBlob(file.blob, file.filename || `classping-attendance-${type}.pdf`);
+    const blob = await api(`/api/export?${query.toString()}`);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `classping-attendance-${type}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
     showToast('PDF downloaded.');
-  } catch (err) { showToast(err.message); }
-}
-async function downloadHistoryExport(format) {
-  try {
-    const file = await api(`/api/export?format=${encodeURIComponent(format)}`);
-    const extension = format.toLowerCase();
-    saveBlob(file.blob, file.filename || `classping-attendance-history.${extension}`);
-    showToast(`${extension.toUpperCase()} history downloaded.`);
-    if (role === 'monitor') setTimeout(() => loadDownloadHistory(false).catch(() => {}), 700);
   } catch (err) { showToast(err.message); }
 }
 
@@ -520,7 +432,6 @@ $('#login-form').addEventListener('submit', async event => {
     applyRole();
     renderAll();
     setLoginVisible(false);
-    showView(role === 'viewer' ? 'sheet' : 'home');
     $('#login-password').value = '';
   } catch (err) {
     if (thisLoginAttempt === authFlowVersion) {
@@ -538,7 +449,7 @@ $('#login-form').addEventListener('submit', async event => {
 $('#logout-button').addEventListener('click', async () => {
   ++authFlowVersion;
   try { await api('/api/logout', { method: 'POST', body: '{}' }); } catch {}
-  role = null; appData = null; sheetData = null; historyOffset = 0; setLoginVisible(true); showToast('Signed out.');
+  role = null; appData = null; setLoginVisible(true); showToast('Signed out.');
 });
 $$('[data-view]').forEach(button => button.addEventListener('click', () => showView(button.dataset.view)));
 $$('[data-go]').forEach(button => button.addEventListener('click', () => showView(button.dataset.go)));
@@ -557,12 +468,6 @@ $('#finalize-day').addEventListener('click', finalizeDay);
 $('#reopen-day').addEventListener('click', reopenDay);
 $('#download-final-day').addEventListener('click', () => downloadPdf('daily', { date: selectedDate }));
 $('#records-month').addEventListener('change', renderRecords);
-$('#sheet-month').addEventListener('change', renderSheet);
-$('#export-history-xlsx').addEventListener('click', () => downloadHistoryExport('xlsx'));
-$('#export-history-csv').addEventListener('click', () => downloadHistoryExport('csv'));
-$('#export-history-pdf').addEventListener('click', () => downloadHistoryExport('pdf'));
-$('#refresh-download-history').addEventListener('click', () => loadDownloadHistory(false).catch(err => showToast(err.message)));
-$('#load-more-history').addEventListener('click', () => loadDownloadHistory(true).catch(err => showToast(err.message)));
 $('#setup-form').addEventListener('submit', saveSetup);
 $('#export-daily').addEventListener('click', () => downloadPdf('daily', { date: $('#export-daily-date').value }));
 $('#export-weekly').addEventListener('click', () => downloadPdf('weekly', { date: $('#export-week-date').value }));
