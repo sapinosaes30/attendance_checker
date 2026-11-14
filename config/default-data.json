@@ -4,51 +4,209 @@
     "schoolAddress": "Brgy. Bito-on, Jaro, Iloilo City",
     "gradeSection": "Grade 9 - NEON",
     "adviser": "Irenemar C. Ramos",
-    "classMonitor": "Amirah Thea A. Tabangcurora",
+    "classMonitor": "Amirah Thea A. Tabangcurda",
     "presentMark": "/",
     "absentMark": "A",
     "lateMark": "L",
     "excusedMark": "E"
   },
-  "formerRoster": [],
   "roster": [
-    { "id": "b01", "gender": "Boys", "name": "ALDEP, Jonn Kaizer T." },
-    { "id": "b02", "gender": "Boys", "name": "AGONDEZ, Monwic Gnel E." },
-    { "id": "b03", "gender": "Boys", "name": "BERNADAS, Rudolf Benedict D." },
-    { "id": "b04", "gender": "Boys", "name": "CAMINCE, Drew Denzel C." },
-    { "id": "b05", "gender": "Boys", "name": "JARABELO, Yohann Sebastian F." },
-    { "id": "b06", "gender": "Boys", "name": "MANGULABNAN, Driejay Heaven L." },
-    { "id": "b07", "gender": "Boys", "name": "MENDOZA, Ram Xian H." },
-    { "id": "b08", "gender": "Boys", "name": "OLIVAR, Wilson Louis M." },
-    { "id": "b09", "gender": "Boys", "name": "PASQUIN, Randall Jpeg B." },
-    { "id": "b10", "gender": "Boys", "name": "PINZON, Andrei E." },
-    { "id": "b11", "gender": "Boys", "name": "QUITOS, Samuel Jobet S." },
-    { "id": "b12", "gender": "Boys", "name": "SALCEDO, Rhein Joachim C." },
-    { "id": "b13", "gender": "Boys", "name": "SANICO, Kurt Matthew P." },
-    { "id": "b14", "gender": "Boys", "name": "SAPINOSA, Elijah Brylle S." },
-    { "id": "b15", "gender": "Boys", "name": "TAMISES, Jerameel E." },
-    { "id": "b16", "gender": "Boys", "name": "TURAO, Jamich Emmanuel D." },
-    { "id": "b17", "gender": "Boys", "name": "VILLANUEVA, Blake M." },
-    { "id": "b18", "gender": "Boys", "name": "VILLANUEVA, Michael Ethan Ray D." },
-    { "id": "g01", "gender": "Girls", "name": "ALMEROL, Maria Beatrice G." },
-    { "id": "g02", "gender": "Girls", "name": "DIAMANTE, Alliesh Jade P." },
-    { "id": "g03", "gender": "Girls", "name": "ESCANER, Angela Caith G." },
-    { "id": "g04", "gender": "Girls", "name": "HERRERA, Allyah Muriel S." },
-    { "id": "g05", "gender": "Girls", "name": "HIJALGA, Princess Sofia D." },
-    { "id": "g06", "gender": "Girls", "name": "JABAGAT, Aya Daniella B." },
-    { "id": "g07", "gender": "Girls", "name": "LACSON, Yzabella N." },
-    { "id": "g08", "gender": "Girls", "name": "MORALIDAD, Angelica Faith C." },
-    { "id": "g09", "gender": "Girls", "name": "NEDULA, Iyanna Rigelle A." },
-    { "id": "g10", "gender": "Girls", "name": "ROGERS, Ysabella Andrea E." },
-    { "id": "g11", "gender": "Girls", "name": "TABANGCURORA, Amirah Thea A." },
-    { "id": "g12", "gender": "Girls", "name": "TUAZON, Ma. Ysobelle Amyag N." }
+    {
+      "id": "b01",
+      "gender": "Boys",
+      "name": "ALDEP, Jonn Kaizer T."
+    },
+    {
+      "id": "b02",
+      "gender": "Boys",
+      "name": "AGONDEZ, Monwic Gnel E."
+    },
+    {
+      "id": "b03",
+      "gender": "Boys",
+      "name": "BERNADAS, Rudolf Benedict D."
+    },
+    {
+      "id": "b04",
+      "gender": "Boys",
+      "name": "CAMINCE, Drew Denzel C."
+    },
+    {
+      "id": "b05",
+      "gender": "Boys",
+      "name": "JARABELO, Yohann Sebastian F."
+    },
+    {
+      "id": "b06",
+      "gender": "Boys",
+      "name": "MANGULABNAN, Driejay Heaven L."
+    },
+    {
+      "id": "b07",
+      "gender": "Boys",
+      "name": "MENDOZA, Ram Xian H."
+    },
+    {
+      "id": "b08",
+      "gender": "Boys",
+      "name": "OLIVAR, Wilson Louis M."
+    },
+    {
+      "id": "b09",
+      "gender": "Boys",
+      "name": "PASQUIN, Randall Jpeg B."
+    },
+    {
+      "id": "b10",
+      "gender": "Boys",
+      "name": "PINZON, Andrei E."
+    },
+    {
+      "id": "b11",
+      "gender": "Boys",
+      "name": "QUITOS, Samuel Jobet S."
+    },
+    {
+      "id": "b12",
+      "gender": "Boys",
+      "name": "SALCEDO, Rhein Joachim C."
+    },
+    {
+      "id": "b13",
+      "gender": "Boys",
+      "name": "SANICO, Kurt Matthew P."
+    },
+    {
+      "id": "b14",
+      "gender": "Boys",
+      "name": "SAPINOSA, Elijah Brylle S."
+    },
+    {
+      "id": "b15",
+      "gender": "Boys",
+      "name": "TAMISES, Jerameel E."
+    },
+    {
+      "id": "b16",
+      "gender": "Boys",
+      "name": "TURAO, Jamich Emmanuel D."
+    },
+    {
+      "id": "b17",
+      "gender": "Boys",
+      "name": "VILLANUEVA, Blake M."
+    },
+    {
+      "id": "b18",
+      "gender": "Boys",
+      "name": "VILLANUEVA, Michael Ethan Ray D."
+    },
+    {
+      "id": "g01",
+      "gender": "Girls",
+      "name": "ALMEROL, Maria Beatrice G."
+    },
+    {
+      "id": "g02",
+      "gender": "Girls",
+      "name": "DIAMANTE, Alliesh Jade P."
+    },
+    {
+      "id": "g03",
+      "gender": "Girls",
+      "name": "ESCANER, Angela Caith G."
+    },
+    {
+      "id": "g04",
+      "gender": "Girls",
+      "name": "HERRERA, Allyah Muriel S."
+    },
+    {
+      "id": "g05",
+      "gender": "Girls",
+      "name": "HIJALGA, Princess Sofia D."
+    },
+    {
+      "id": "g06",
+      "gender": "Girls",
+      "name": "JABAGAT, Aya Daniella B."
+    },
+    {
+      "id": "g07",
+      "gender": "Girls",
+      "name": "LACSON, Yzabella N."
+    },
+    {
+      "id": "g08",
+      "gender": "Girls",
+      "name": "MORALIDAD, Angelica Faith C."
+    },
+    {
+      "id": "g09",
+      "gender": "Girls",
+      "name": "NEDULA, Iyanna Rigelle A."
+    },
+    {
+      "id": "g10",
+      "gender": "Girls",
+      "name": "ROGERS, Ysabella Andrea E."
+    },
+    {
+      "id": "g11",
+      "gender": "Girls",
+      "name": "TABANGCURDA, Amirah Thea A."
+    },
+    {
+      "id": "g12",
+      "gender": "Girls",
+      "name": "TUAZON, Ma. Ysobelle Amyag N."
+    }
   ],
   "subjectsByDay": {
-    "Monday": ["Social Science", "Biology", "Filipino", "Computer Science", "Music", "Chemistry", "Physical Education"],
-    "Tuesday": ["Values Education", "English", "Physics", "Health", "Filipino", "Mathematics", "Biology", "Statistics"],
-    "Wednesday": ["Chemistry", "Statistics", "Social Science", "Physics", "Biology", "Mathematics", "Computer Science"],
-    "Thursday": ["Chemistry", "Values Education", "Mathematics", "English", "Physics", "Filipino", "Independent Learning Activity"],
-    "Friday": ["MAPEH", "Homeroom", "Mathematics", "Filipino", "Independent Learning Activity"]
+    "Monday": [
+      "Social Science",
+      "Biology",
+      "Filipino",
+      "Computer Science",
+      "Music",
+      "Chemistry",
+      "Physical Education"
+    ],
+    "Tuesday": [
+      "Values Education",
+      "English",
+      "Physics",
+      "Health",
+      "Filipino",
+      "Mathematics",
+      "Biology",
+      "Statistics"
+    ],
+    "Wednesday": [
+      "Chemistry",
+      "Statistics",
+      "Social Science",
+      "Physics",
+      "Biology",
+      "Mathematics",
+      "Computer Science"
+    ],
+    "Thursday": [
+      "Chemistry",
+      "Values Education",
+      "Mathematics",
+      "English",
+      "Physics",
+      "Filipino",
+      "Independent Learning Activity"
+    ],
+    "Friday": [
+      "MAPEH",
+      "Homeroom",
+      "Mathematics",
+      "Filipino",
+      "Independent Learning Activity"
+    ]
   },
   "attendance": {},
   "auditLog": []
