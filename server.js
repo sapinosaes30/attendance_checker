@@ -244,6 +244,8 @@ async function initData() {
   if (!data.attendance) data.attendance = {};
   if (!data.auditLog) data.auditLog = [];
   if (!Array.isArray(data.formerRoster)) data.formerRoster = [];
+  const scheduleMigrationApplied = applyRequestedScheduleUpdate();
+  if (scheduleMigrationApplied) await persist();
   if (!USE_SUPABASE) {
     try {
       const rawHistory = await fs.promises.readFile(DOWNLOAD_HISTORY_FILE, 'utf8');
@@ -285,13 +287,42 @@ function getSubjectsForDate(date) {
   const day = weekdayName(date);
   return data.subjectsByDay?.[day] || [];
 }
+function applyRequestedScheduleUpdate() {
+  const migrationKey = 'remove-weekday-ila-add-friday-english-ila-2026-11';
+  const applied = Array.isArray(data.classpingScheduleMigrations) ? data.classpingScheduleMigrations : [];
+  if (applied.includes(migrationKey)) return false;
+
+  if (!data.subjectsByDay || typeof data.subjectsByDay !== 'object') data.subjectsByDay = {};
+  const isIla = value => /\bILA\b/i.test(String(value)) || /independent\s+learning\s+activity/i.test(String(value));
+
+  for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday']) {
+    const existing = Array.isArray(data.subjectsByDay[day]) ? data.subjectsByDay[day] : [];
+    const retained = existing.filter(subject => !isIla(subject));
+    if (retained.length !== existing.length) {
+      data.subjectsByDay[day] = retained;
+    }
+  }
+
+  const friday = Array.isArray(data.subjectsByDay.Friday) ? [...data.subjectsByDay.Friday] : [];
+  const englishIlaIndex = friday.findIndex(subject => /english/i.test(String(subject)) && isIla(subject));
+  const englishIlaLabel = 'English ILA (3:20–4:10 PM)';
+  if (englishIlaIndex === -1) {
+    friday.push(englishIlaLabel);
+  } else if (!/3:20\s*(?:–|-|to)\s*4:10/i.test(String(friday[englishIlaIndex]))) {
+    friday[englishIlaIndex] = englishIlaLabel;
+  }
+  data.subjectsByDay.Friday = friday;
+  data.classpingScheduleMigrations = [...applied, migrationKey];
+  return true;
+}
 function getOrCreateRecord(date) {
   if (!data.attendance[date]) {
     const subjects = {};
     for (const subject of getSubjectsForDate(date)) subjects[subject] = {};
-    data.attendance[date] = { date, state: 'draft', subjects, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    data.attendance[date] = { date, state: 'draft', subjects, noClassSubjects: {}, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
   }
   const record = data.attendance[date];
+  if (!record.noClassSubjects || typeof record.noClassSubjects !== 'object' || Array.isArray(record.noClassSubjects)) record.noClassSubjects = {};
   for (const subject of getSubjectsForDate(date)) if (!record.subjects[subject]) record.subjects[subject] = {};
   return record;
 }
@@ -415,6 +446,10 @@ app.put('/api/attendance/:date', requireAuth, requireMonitor, asyncHandler(async
   const expectedSubjects = previous ? Object.keys(previous.subjects || {}) : getSubjectsForDate(date);
   const incoming = req.body?.subjects;
   if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) return res.status(400).json({ error: 'Attendance data is missing.' });
+  const incomingNoClass = req.body?.noClassSubjects;
+  if (incomingNoClass !== undefined && (!incomingNoClass || typeof incomingNoClass !== 'object' || Array.isArray(incomingNoClass))) {
+    return res.status(400).json({ error: 'No-class period data is invalid.' });
+  }
   const nextSubjects = {};
   for (const subject of expectedSubjects) {
     const raw = incoming[subject] || {};
@@ -425,10 +460,16 @@ app.put('/api/attendance/:date', requireAuth, requireMonitor, asyncHandler(async
     }
     nextSubjects[subject] = clean;
   }
+  const noClassSource = incomingNoClass === undefined ? (previous?.noClassSubjects || {}) : incomingNoClass;
+  const nextNoClassSubjects = {};
+  for (const subject of expectedSubjects) {
+    if (noClassSource[subject] === true) nextNoClassSubjects[subject] = true;
+  }
   data.attendance[date] = {
     date,
-    state: previous?.state === 'finalized' ? 'draft' : 'draft',
+    state: 'draft',
     subjects: nextSubjects,
+    noClassSubjects: nextNoClassSubjects,
     createdAt: previous?.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
@@ -444,6 +485,7 @@ app.post('/api/attendance/:date/finalize', requireAuth, requireMonitor, asyncHan
   if (!record) return res.status(400).json({ error: 'Record attendance before finalizing.' });
   const missing = [];
   for (const subject of Object.keys(record.subjects || {})) {
+    if (record.noClassSubjects?.[subject] === true) continue;
     const marks = record.subjects?.[subject] || {};
     for (const student of data.roster) if (!['P', 'A', 'L', 'E'].includes(marks[student.id])) missing.push({ subject, student: student.name });
   }
@@ -491,7 +533,7 @@ app.put('/api/setup', requireAuth, requireMonitor, asyncHandler(async (req, res)
   for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']) {
     const list = Array.isArray(subjectsByDay?.[day]) ? subjectsByDay[day] : data.subjectsByDay[day] || [];
     const safeSubjects = list.filter(x => typeof x === 'string').map(x => safeString(x, 70)).filter(safeObjectKey);
-    cleanSubjects[day] = [...new Set(safeSubjects)].slice(0, 15);
+    cleanSubjects[day] = [...new Set(safeSubjects)].slice(0, 30);
   }
   data.classInfo = {
     schoolName: safeString(classInfo.schoolName, 120) || data.classInfo.schoolName,
@@ -546,7 +588,11 @@ app.get('/api/sheet', requireAuth, (req, res) => {
         }
         subjects[subject] = marks;
       }
-      return { date: record.date, subjects };
+      const noClassSubjects = Object.create(null);
+      for (const subject of Object.keys(record.subjects || {})) {
+        if (safeObjectKey(subject) && record.noClassSubjects?.[subject] === true) noClassSubjects[subject] = true;
+      }
+      return { date: record.date, subjects, noClassSubjects };
     });
   res.json({
     classInfo: {
@@ -663,8 +709,9 @@ function drawAttendancePage(doc, dateColumns, pageInfo = {}) {
         const record = data.attendance[day.date];
         for (const subject of day.subjects) {
           const status = record?.subjects?.[subject]?.[student.id];
-          const mark = status === 'P' ? data.classInfo.presentMark : status === 'A' ? data.classInfo.absentMark : status === 'L' ? data.classInfo.lateMark : status === 'E' ? data.classInfo.excusedMark : '';
-          drawCell(doc, tableX + nameW + c * cellW, y, cellW, rowH, mark, { align: 'center', font: 'Helvetica-Bold', fontSize: 7, padX: 0, padY: 3, lineWidth: 0.3 });
+          const noClass = record?.noClassSubjects?.[subject] === true;
+          const mark = noClass ? 'NC' : status === 'P' ? data.classInfo.presentMark : status === 'A' ? data.classInfo.absentMark : status === 'L' ? data.classInfo.lateMark : status === 'E' ? data.classInfo.excusedMark : '';
+          drawCell(doc, tableX + nameW + c * cellW, y, cellW, rowH, mark, { align: 'center', font: 'Helvetica-Bold', fontSize: noClass ? 5.2 : 7, padX: 0, padY: 3, lineWidth: 0.3 });
           c++;
         }
       }
@@ -681,7 +728,7 @@ function drawAttendancePage(doc, dateColumns, pageInfo = {}) {
     doc.fillColor('#a33a30').font('Helvetica-Bold').fontSize(8).text('DRAFT - FOR REVIEW', W - margin - 130, H - 22, { width: 130, align: 'right' });
     doc.restore();
   }
-  doc.font('Helvetica').fontSize(5.5).fillColor('#666666').text('Generated from ClassPing Attendance. Verify against the signed official record before submission.', margin, H - 20, { width: tableW - 140 });
+  doc.font('Helvetica').fontSize(5.5).fillColor('#666666').text('Generated from ClassPing Attendance. NC = No Class During Period. Verify against the signed official record before submission.', margin, H - 20, { width: tableW - 140 });
 }
 
 function buildPdf(pages) {
